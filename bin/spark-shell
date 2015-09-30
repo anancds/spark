@@ -92,4 +92,4 @@ main "$@"
 # then reenable echo and propagate the code.
 exit_status=$?
 onExit
-
+#重要：关于看源码，如果想跟踪函数调用的话，可以用new Throwable().printStackTrace()
