@@ -20,6 +20,7 @@
 #
 # Shell script for starting the Spark Shell REPL
 #判断系统
+#test
 cygwin=false
 case "`uname`" in
   CYGWIN*) cygwin=true;;
