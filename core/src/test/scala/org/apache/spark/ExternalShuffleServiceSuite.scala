@@ -27,7 +27,7 @@ import org.apache.spark.network.shuffle.{ExternalShuffleBlockHandler, ExternalSh
 /**
  * This suite creates an external shuffle server and routes all shuffle fetches through it.
  * Note that failures in this suite may arise due to changes in Spark that invalidate expectations
- * set up in [[ExternalShuffleBlockHandler]], such as changing the format of shuffle files or how
+ * set up in `ExternalShuffleBlockHandler`, such as changing the format of shuffle files or how
  * we hash files into folders.
  */
 class ExternalShuffleServiceSuite extends ShuffleSuite with BeforeAndAfterAll {
@@ -35,7 +35,8 @@ class ExternalShuffleServiceSuite extends ShuffleSuite with BeforeAndAfterAll {
   var rpcHandler: ExternalShuffleBlockHandler = _
 
   override def beforeAll() {
-    val transportConf = SparkTransportConf.fromSparkConf(conf, numUsableCores = 2)
+    super.beforeAll()
+    val transportConf = SparkTransportConf.fromSparkConf(conf, "shuffle", numUsableCores = 2)
     rpcHandler = new ExternalShuffleBlockHandler(transportConf, null)
     val transportContext = new TransportContext(transportConf, rpcHandler)
     server = transportContext.createServer()
@@ -46,7 +47,11 @@ class ExternalShuffleServiceSuite extends ShuffleSuite with BeforeAndAfterAll {
   }
 
   override def afterAll() {
-    server.close()
+    try {
+      server.close()
+    } finally {
+      super.afterAll()
+    }
   }
 
   // This test ensures that the external shuffle service is actually in use for the other tests.

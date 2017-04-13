@@ -18,16 +18,26 @@
 package org.apache.spark
 
 import java.io.{ByteArrayInputStream, File, FileInputStream, FileOutputStream}
-import java.net.{URI, URL}
+import java.net.{HttpURLConnection, URI, URL}
 import java.nio.charset.StandardCharsets
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.Arrays
+import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.jar.{JarEntry, JarOutputStream}
-
-import scala.collection.JavaConverters._
-
-import com.google.common.io.{ByteStreams, Files}
+import javax.net.ssl._
 import javax.tools.{JavaFileObject, SimpleJavaFileObject, ToolProvider}
 
+import scala.collection.JavaConverters._
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
+import scala.sys.process.{Process, ProcessLogger}
+import scala.util.Try
+
+import com.google.common.io.{ByteStreams, Files}
+
+import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.scheduler._
 import org.apache.spark.util.Utils
 
 /**
@@ -79,15 +89,18 @@ private[spark] object TestUtils {
   }
 
   /**
-   * Create a jar file that contains this set of files. All files will be located at the root
-   * of the jar.
+   * Create a jar file that contains this set of files. All files will be located in the specified
+   * directory or at the root of the jar.
    */
-  def createJar(files: Seq[File], jarFile: File): URL = {
+  def createJar(files: Seq[File], jarFile: File, directoryPrefix: Option[String] = None): URL = {
     val jarFileStream = new FileOutputStream(jarFile)
     val jarStream = new JarOutputStream(jarFileStream, new java.util.jar.Manifest())
 
     for (file <- files) {
-      val jarEntry = new JarEntry(file.getName)
+      // The `name` for the argument in `JarEntry` should use / for its separator. This is
+      // ZIP specification.
+      val prefix = directoryPrefix.map(d => s"$d/").getOrElse("")
+      val jarEntry = new JarEntry(prefix + file.getName)
       jarStream.putNextEntry(jarEntry)
 
       val in = new FileInputStream(file)
@@ -119,7 +132,7 @@ private[spark] object TestUtils {
       classpathUrls: Seq[URL]): File = {
     val compiler = ToolProvider.getSystemJavaCompiler
 
-    // Calling this outputs a class file in pwd. It's easier to just rename the file than
+    // Calling this outputs a class file in pwd. It's easier to just rename the files than
     // build a custom FileManager that controls the output location.
     val options = if (classpathUrls.nonEmpty) {
       Seq("-classpath", classpathUrls.map { _.getFile }.mkString(File.pathSeparator))
@@ -153,5 +166,105 @@ private[spark] object TestUtils {
       "public class " + className + extendsText + " implements java.io.Serializable {" +
       "  @Override public String toString() { return \"" + toStringValue + "\"; }}")
     createCompiledClass(className, destDir, sourceFile, classpathUrls)
+  }
+
+  /**
+   * Run some code involving jobs submitted to the given context and assert that the jobs spilled.
+   */
+  def assertSpilled[T](sc: SparkContext, identifier: String)(body: => T): Unit = {
+    val spillListener = new SpillListener
+    sc.addSparkListener(spillListener)
+    body
+    assert(spillListener.numSpilledStages > 0, s"expected $identifier to spill, but did not")
+  }
+
+  /**
+   * Run some code involving jobs submitted to the given context and assert that the jobs
+   * did not spill.
+   */
+  def assertNotSpilled[T](sc: SparkContext, identifier: String)(body: => T): Unit = {
+    val spillListener = new SpillListener
+    sc.addSparkListener(spillListener)
+    body
+    assert(spillListener.numSpilledStages == 0, s"expected $identifier to not spill, but did")
+  }
+
+  /**
+   * Test if a command is available.
+   */
+  def testCommandAvailable(command: String): Boolean = {
+    val attempt = Try(Process(command).run(ProcessLogger(_ => ())).exitValue())
+    attempt.isSuccess && attempt.get == 0
+  }
+
+  /**
+   * Returns the response code from an HTTP(S) URL.
+   */
+  def httpResponseCode(
+      url: URL,
+      method: String = "GET",
+      headers: Seq[(String, String)] = Nil): Int = {
+    val connection = url.openConnection().asInstanceOf[HttpURLConnection]
+    connection.setRequestMethod(method)
+    headers.foreach { case (k, v) => connection.setRequestProperty(k, v) }
+
+    // Disable cert and host name validation for HTTPS tests.
+    if (connection.isInstanceOf[HttpsURLConnection]) {
+      val sslCtx = SSLContext.getInstance("SSL")
+      val trustManager = new X509TrustManager {
+        override def getAcceptedIssuers(): Array[X509Certificate] = null
+        override def checkClientTrusted(x509Certificates: Array[X509Certificate], s: String) {}
+        override def checkServerTrusted(x509Certificates: Array[X509Certificate], s: String) {}
+      }
+      val verifier = new HostnameVerifier() {
+        override def verify(hostname: String, session: SSLSession): Boolean = true
+      }
+      sslCtx.init(null, Array(trustManager), new SecureRandom())
+      connection.asInstanceOf[HttpsURLConnection].setSSLSocketFactory(sslCtx.getSocketFactory())
+      connection.asInstanceOf[HttpsURLConnection].setHostnameVerifier(verifier)
+    }
+
+    try {
+      connection.connect()
+      connection.getResponseCode()
+    } finally {
+      connection.disconnect()
+    }
+  }
+
+}
+
+
+/**
+ * A `SparkListener` that detects whether spills have occurred in Spark jobs.
+ */
+private class SpillListener extends SparkListener {
+  private val stageIdToTaskMetrics = new mutable.HashMap[Int, ArrayBuffer[TaskMetrics]]
+  private val spilledStageIds = new mutable.HashSet[Int]
+  private val stagesDone = new CountDownLatch(1)
+
+  def numSpilledStages: Int = {
+    // Long timeout, just in case somehow the job end isn't notified.
+    // Fails if a timeout occurs
+    assert(stagesDone.await(10, TimeUnit.SECONDS))
+    spilledStageIds.size
+  }
+
+  override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {
+    stageIdToTaskMetrics.getOrElseUpdate(
+      taskEnd.stageId, new ArrayBuffer[TaskMetrics]) += taskEnd.taskMetrics
+  }
+
+  override def onStageCompleted(stageComplete: SparkListenerStageCompleted): Unit = {
+    val stageId = stageComplete.stageInfo.stageId
+    val metrics = stageIdToTaskMetrics.remove(stageId).toSeq.flatten
+    val spilled = metrics.map(_.memoryBytesSpilled).sum > 0
+    if (spilled) {
+      spilledStageIds += stageId
+    }
+  }
+
+  override def onJobEnd(jobEnd: SparkListenerJobEnd): Unit = {
+    stagesDone.countDown()
   }
 }

@@ -1,36 +1,113 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Imports from base R
-importFrom(methods, setGeneric, setMethod, setOldClass)
+# Do not include stats:: "rpois", "runif" - causes error at runtime
+importFrom("methods", "setGeneric", "setMethod", "setOldClass")
+importFrom("methods", "is", "new", "signature", "show")
+importFrom("stats", "gaussian", "setNames")
+importFrom("utils", "download.file", "object.size", "packageVersion", "tail", "untar")
 
 # Disable native libraries till we figure out how to package it
 # See SPARKR-7839
 #useDynLib(SparkR, stringHashCode)
 
 # S3 methods exported
+export("sparkR.session")
 export("sparkR.init")
 export("sparkR.stop")
+export("sparkR.session.stop")
+export("sparkR.conf")
+export("sparkR.version")
+export("sparkR.uiWebUrl")
 export("print.jobj")
+
+export("sparkR.newJObject")
+export("sparkR.callJMethod")
+export("sparkR.callJStatic")
+
+export("install.spark")
+
+export("sparkRSQL.init",
+       "sparkRHive.init")
 
 # MLlib integration
 exportMethods("glm",
+              "spark.glm",
               "predict",
-              "summary")
+              "summary",
+              "spark.kmeans",
+              "fitted",
+              "spark.mlp",
+              "spark.naiveBayes",
+              "spark.survreg",
+              "spark.lda",
+              "spark.posterior",
+              "spark.perplexity",
+              "spark.isoreg",
+              "spark.gaussianMixture",
+              "spark.als",
+              "spark.kstest",
+              "spark.logit",
+              "spark.randomForest",
+              "spark.gbt",
+              "spark.bisectingKmeans",
+              "spark.svmLinear",
+              "spark.fpGrowth",
+              "spark.freqItemsets",
+              "spark.associationRules")
 
 # Job group lifecycle management methods
 export("setJobGroup",
        "clearJobGroup",
        "cancelJobGroup")
 
-exportClasses("DataFrame")
+# Export Utility methods
+export("setLogLevel")
+
+exportClasses("SparkDataFrame")
 
 exportMethods("arrange",
+              "as.data.frame",
+              "attach",
               "cache",
+              "checkpoint",
+              "coalesce",
               "collect",
+              "colnames",
+              "colnames<-",
+              "coltypes",
+              "coltypes<-",
               "columns",
               "count",
+              "cov",
+              "corr",
+              "covar_samp",
+              "covar_pop",
+              "createOrReplaceTempView",
+              "crossJoin",
               "crosstab",
+              "dapply",
+              "dapplyCollect",
               "describe",
               "dim",
               "distinct",
+              "drop",
+              "dropDuplicates",
               "dropna",
               "dtypes",
               "except",
@@ -38,29 +115,37 @@ exportMethods("arrange",
               "fillna",
               "filter",
               "first",
+              "freqItems",
+              "gapply",
+              "gapplyCollect",
+              "getNumPartitions",
               "group_by",
               "groupBy",
               "head",
               "insertInto",
               "intersect",
               "isLocal",
+              "isStreaming",
               "join",
               "limit",
               "merge",
               "mutate",
               "na.omit",
               "names",
+              "names<-",
               "ncol",
               "nrow",
               "orderBy",
               "persist",
               "printSchema",
+              "randomSplit",
               "rbind",
               "registerTempTable",
               "rename",
               "repartition",
               "sample",
               "sample_frac",
+              "sampleBy",
               "saveAsParquetFile",
               "saveAsTable",
               "saveDF",
@@ -69,18 +154,29 @@ exportMethods("arrange",
               "selectExpr",
               "show",
               "showDF",
+              "storageLevel",
               "subset",
               "summarize",
               "summary",
               "take",
+              "toJSON",
               "transform",
+              "union",
               "unionAll",
               "unique",
               "unpersist",
               "where",
+              "with",
               "withColumn",
               "withColumnRenamed",
-              "write.df")
+              "write.df",
+              "write.jdbc",
+              "write.json",
+              "write.orc",
+              "write.parquet",
+              "write.stream",
+              "write.text",
+              "write.ml")
 
 exportClasses("Column")
 
@@ -90,6 +186,8 @@ exportMethods("%in%",
               "add_months",
               "alias",
               "approxCountDistinct",
+              "approxQuantile",
+              "array_contains",
               "asc",
               "ascii",
               "asin",
@@ -100,10 +198,12 @@ exportMethods("%in%",
               "between",
               "bin",
               "bitwiseNOT",
+              "bround",
               "cast",
               "cbrt",
               "ceil",
               "ceiling",
+              "column",
               "concat",
               "concat_ws",
               "contains",
@@ -113,13 +213,18 @@ exportMethods("%in%",
               "count",
               "countDistinct",
               "crc32",
+              "hash",
+              "cume_dist",
               "date_add",
               "date_format",
               "date_sub",
               "datediff",
               "dayofmonth",
               "dayofyear",
+              "decode",
+              "dense_rank",
               "desc",
+              "encode",
               "endsWith",
               "exp",
               "explode",
@@ -130,12 +235,14 @@ exportMethods("%in%",
               "floor",
               "format_number",
               "format_string",
+              "from_json",
               "from_unixtime",
               "from_utc_timestamp",
               "getField",
               "getItem",
               "greatest",
               "hex",
+              "histogram",
               "hour",
               "hypot",
               "ifelse",
@@ -144,8 +251,13 @@ exportMethods("%in%",
               "isNaN",
               "isNotNull",
               "isNull",
+              "is.nan",
+              "isnan",
+              "kurtosis",
+              "lag",
               "last",
               "last_day",
+              "lead",
               "least",
               "length",
               "levenshtein",
@@ -164,6 +276,7 @@ exportMethods("%in%",
               "mean",
               "min",
               "minute",
+              "monotonically_increasing_id",
               "month",
               "months_between",
               "n",
@@ -171,17 +284,23 @@ exportMethods("%in%",
               "nanvl",
               "negate",
               "next_day",
+              "ntile",
               "otherwise",
+              "over",
+              "percent_rank",
               "pmod",
+              "posexplode",
               "quarter",
               "rand",
               "randn",
+              "rank",
               "regexp_extract",
               "regexp_replace",
               "reverse",
               "rint",
               "rlike",
               "round",
+              "row_number",
               "rpad",
               "rtrim",
               "second",
@@ -190,12 +309,20 @@ exportMethods("%in%",
               "shiftLeft",
               "shiftRight",
               "shiftRightUnsigned",
+              "sd",
               "sign",
               "signum",
               "sin",
               "sinh",
               "size",
+              "skewness",
+              "sort_array",
               "soundex",
+              "spark_partition_id",
+              "stddev",
+              "stddev_pop",
+              "stddev_samp",
+              "struct",
               "sqrt",
               "startsWith",
               "substr",
@@ -207,6 +334,8 @@ exportMethods("%in%",
               "toDegrees",
               "toRadians",
               "to_date",
+              "to_json",
+              "to_timestamp",
               "to_utc_timestamp",
               "translate",
               "trim",
@@ -214,30 +343,64 @@ exportMethods("%in%",
               "unhex",
               "unix_timestamp",
               "upper",
+              "var",
+              "variance",
+              "var_pop",
+              "var_samp",
               "weekofyear",
               "when",
+              "window",
               "year")
 
 exportClasses("GroupedData")
 exportMethods("agg")
+exportMethods("pivot")
 
-export("sparkRSQL.init",
-       "sparkRHive.init")
-
-export("cacheTable",
+export("as.DataFrame",
+       "cacheTable",
        "clearCache",
        "createDataFrame",
        "createExternalTable",
+       "createTable",
+       "currentDatabase",
        "dropTempTable",
+       "dropTempView",
        "jsonFile",
+       "listColumns",
+       "listDatabases",
+       "listFunctions",
+       "listTables",
        "loadDF",
        "parquetFile",
        "read.df",
+       "read.jdbc",
+       "read.json",
+       "read.orc",
+       "read.parquet",
+       "read.stream",
+       "read.text",
+       "recoverPartitions",
+       "refreshByPath",
+       "refreshTable",
+       "setCheckpointDir",
+       "setCurrentDatabase",
+       "spark.lapply",
+       "spark.addFile",
+       "spark.getSparkFilesRootDirectory",
+       "spark.getSparkFiles",
        "sql",
-       "table",
+       "str",
+       "tableToDF",
        "tableNames",
        "tables",
-       "uncacheTable")
+       "uncacheTable",
+       "print.summary.GeneralizedLinearRegressionModel",
+       "read.ml",
+       "print.summary.KSTest",
+       "print.summary.RandomForestRegressionModel",
+       "print.summary.RandomForestClassificationModel",
+       "print.summary.GBTRegressionModel",
+       "print.summary.GBTClassificationModel")
 
 export("structField",
        "structField.jobj",
@@ -247,3 +410,36 @@ export("structField",
        "structType.jobj",
        "structType.structField",
        "print.structType")
+
+exportClasses("WindowSpec")
+
+export("partitionBy",
+       "rowsBetween",
+       "rangeBetween")
+
+export("windowPartitionBy",
+       "windowOrderBy")
+
+exportClasses("StreamingQuery")
+
+export("awaitTermination",
+       "isActive",
+       "lastProgress",
+       "queryName",
+       "status",
+       "stopQuery")
+
+
+S3method(print, jobj)
+S3method(print, structField)
+S3method(print, structType)
+S3method(print, summary.GeneralizedLinearRegressionModel)
+S3method(print, summary.KSTest)
+S3method(print, summary.RandomForestRegressionModel)
+S3method(print, summary.RandomForestClassificationModel)
+S3method(print, summary.GBTRegressionModel)
+S3method(print, summary.GBTClassificationModel)
+S3method(structField, character)
+S3method(structField, jobj)
+S3method(structType, jobj)
+S3method(structType, structField)
